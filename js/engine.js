@@ -66,6 +66,16 @@ const HYPS = [
 ];
 for (const h of HYPS) for (const m of ORDER) if (!(m in h.mu)) h.mu[m] = 0;
 
+// Fitted norms and templates from tools/fit_adni.js, when present (js/adni-fit.js loads first in the browser).
+// Memory norms re-center on ADNI cognitively normal adults; the amnestic template takes the late-MCI fit.
+const ADNI = typeof ADNI_FIT !== 'undefined' ? ADNI_FIT
+  : (typeof module !== 'undefined' ? (() => { try { return require('./adni-fit.js'); } catch (e) { return null; } })() : null);
+if (ADNI) {
+  for (const m in ADNI.norms) Object.assign(MEAS[m], ADNI.norms[m]);
+  const T = ADNI.templates.LMCI || ADNI.templates.AD;
+  if (T) Object.assign(HYPS.find(h => h.id === 'amn').mu, T);
+}
+
 const TESTS = [
   { id: 'dsf',    name: 'Digit Span Forward',           meas: ['dsf'],                     min: 1.5 },
   { id: 'dsb',    name: 'Digit Span Backward',          meas: ['dsb'],                     min: 1.5 },
@@ -291,34 +301,49 @@ function moments(pts, keys) {
 // recognition (two-high-threshold): hit = s_D + (1 - s_D) g ; false alarm = g
 const MEMN = 12, MEM_TRIALS = 3;
 const storeAfter = (e, n) => 1 - (1 - e) ** n;
-function memProbs(e, r, f, g, D) {
-  const sT = storeAfter(e, MEM_TRIALS), sd = sT * Math.exp(-f * D);
-  return { sT, sd, learn: Array.from({ length: MEM_TRIALS }, (_, i) => storeAfter(e, i + 1) * r), pd: sd * r, hit: sd + (1 - sd) * g, fa: g };
+// T = number of study trials before the delay (design-agnostic: the same e, r, f describe RAVLT 15x5 or the arcade's 12x3)
+function memProbs(e, r, f, g, D, T = MEM_TRIALS) {
+  const sT = storeAfter(e, T), sd = sT * Math.exp(-f * D);
+  return { sT, sd, learn: Array.from({ length: T }, (_, i) => storeAfter(e, i + 1) * r), pd: sd * r, hit: sd + (1 - sd) * g, fa: g };
 }
-const learnLL = (ks, e, r) => ks.reduce((s, k, i) => s + binLL(k, MEMN, storeAfter(e, i + 1) * r), 0);
+const learnLL = (ks, e, r, n = MEMN) => ks.reduce((s, k, i) => s + binLL(k, n, storeAfter(e, i + 1) * r), 0);
 const ZG = grid(-4.5, 2.5, 29);
-function fitLearn(data) {
+function fitLearn(data, n = MEMN) {
   const pts = [];
   for (const ze of ZG) for (const zr of ZG) {
     const e = zToNat('mem_e', ze), r = zToNat('mem_r', zr);
-    const ll = learnLL(data.ks, e, r);
+    const ll = learnLL(data.ks, e, r, n);
     pts.push({ ll, lw: ll + zPrior(ze) + zPrior(zr), ze, zr });
   }
   const mo = moments(pts, ['ze', 'zr']);
   return { z: { mem_e: mo.ze.mean, mem_r: mo.zr.mean }, se: { mem_e: mo.ze.sd, mem_r: mo.zr.sd }, pll: patternLL(pts, { ze: 'mem_e', zr: 'mem_r' }) };
 }
 const ZG3 = grid(-4.5, 2.5, 21), GG = [0.01, 0.03, 0.06, 0.1, 0.15, 0.22, 0.3];
-function fitMemory(learn, del) {
-  const pts = [];
+// Joint memory likelihood on the (e, r, f) grid with guess bias g marginalized (uniform over GG).
+// design: { n: list length, nRec: recognition targets, nFoil: recognition foils }
+function memGrid(learn, del, design = {}) {
+  const n = design.n || MEMN, nRec = design.nRec || n, nFoil = design.nFoil || n, T = learn.ks.length;
+  const N3 = ZG3.length, ll = new Float64Array(N3 * N3 * N3), gpost = new Float64Array(N3 * N3 * N3);
+  let i = 0;
   for (const ze of ZG3) { const e = zToNat('mem_e', ze);
     for (const zr of ZG3) { const r = zToNat('mem_r', zr);
-      const base = learnLL(learn.ks, e, r);
+      const base = learnLL(learn.ks, e, r, n);
       for (const zf of ZG3) { const f = zToNat('mem_f', zf);
+        let mx = -Infinity; const v = [];
         for (const g of GG) {
-          const p = memProbs(e, r, f, g, del.delayMin);
-          const ll = base + binLL(del.kd, MEMN, p.pd) + binLL(del.hits, MEMN, p.hit) + binLL(del.fas, MEMN, p.fa);
-          pts.push({ ll, lw: ll + zPrior(ze) + zPrior(zr) + zPrior(zf), ze, zr, zf, g });
-        } } } }
+          const p = memProbs(e, r, f, g, del.delayMin, T);
+          const x = binLL(del.kd, n, p.pd) + binLL(del.hits, nRec, p.hit) + binLL(del.fas, nFoil, p.fa);
+          v.push(x); if (x > mx) mx = x;
+        }
+        let acc = 0, gm = 0; v.forEach((x, j) => { const w = Math.exp(x - mx); acc += w; gm += w * GG[j]; });
+        ll[i] = base + mx + Math.log(acc / GG.length); gpost[i] = gm / acc; i++;
+      } } }
+  return { ll, gpost };
+}
+const gridPoint = i => { const N = ZG3.length; return { ze: ZG3[Math.floor(i / (N * N))], zr: ZG3[Math.floor(i / N) % N], zf: ZG3[i % N] }; };
+function fitMemory(learn, del, design) {
+  const G = memGrid(learn, del, design), pts = [];
+  for (let i = 0; i < G.ll.length; i++) { const p = gridPoint(i); pts.push({ ll: G.ll[i], lw: G.ll[i] + zPrior(p.ze) + zPrior(p.zr) + zPrior(p.zf), ze: p.ze, zr: p.zr, zf: p.zf, g: G.gpost[i] }); }
   const mo = moments(pts, ['ze', 'zr', 'zf', 'g']);
   return { z: { mem_e: mo.ze.mean, mem_r: mo.zr.mean, mem_f: mo.zf.mean }, se: { mem_e: mo.ze.sd, mem_r: mo.zr.sd, mem_f: mo.zf.sd }, g: mo.g.mean, pll: patternLL(pts, { ze: 'mem_e', zr: 'mem_r', zf: 'mem_f' }) };
 }
@@ -470,5 +495,5 @@ function simStep(S, truth, r) {
 
 if (typeof module !== 'undefined') module.exports = {
   HYPS, TESTS, MEAS, ORDER, newSession, simStep, truthProfile, mulberry32, decide, zToNat, natToZ,
-  fitLearn, fitMemory, MEMN, MEM_TRIALS, storeAfter, fitFluency, simFluency, fitRotation, simRotation, memProbs, binom, gauss, scoreTest, simulateData, ensurePatient,
+  fitLearn, fitMemory, memGrid, gridPoint, ZG3, zPrior, SIGMA, MEMN, MEM_TRIALS, storeAfter, fitFluency, simFluency, fitRotation, simRotation, memProbs, binom, gauss, scoreTest, simulateData, ensurePatient,
 };

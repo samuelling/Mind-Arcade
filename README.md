@@ -101,6 +101,24 @@ On the `model-based` branch, three tasks are fit with generative process models 
 - **Cam-CAN:** age-stratified norms with trial-level data.
 - **Time-stamped fluency:** rare in existing datasets. The arcade collects it.
 
+## Fitting to ADNI
+
+`tools/fit_adni.js` fits the arcade's memory model to ADNI's RAVLT data (15 words × 5 trials, a 30-minute delay, and recognition). It also learns diagnosis templates. ADNI data needs an approved LONI account and can't be redistributed, so run it locally on your own download:
+
+```
+node tools/fit_adni.js --neurobat NEUROBAT.csv --dx ADNIMERGE.csv --write-engine
+```
+
+**Steps:**
+1. **Per-participant fits.** For each baseline participant, the script computes the likelihood of encoding `e`, retrieval access `r` and forgetting `f`, using the same model the arcade uses with only the list design changed. Guess bias is marginalized.
+2. **Group templates.** For each diagnosis (CN/SMC, EMCI, LMCI, AD), hierarchical EM estimates the group's mean and spread.
+3. **Cross-validated benchmark.** Five-fold cross-validation classifies diagnosis from RAVLT alone with three methods: the model's exact marginal likelihood (what the engine does), LDA on the fitted parameters, and LDA on classic summary scores (immediate total, learning, delayed, % forgetting, recognition).
+4. **Outputs.** The script writes `data/adni_fit.json`. With `--write-engine`, it also writes `js/adni-fit.js`. This re-centers the memory norms on cognitively normal ADNI participants, swaps the amnestic template for the late-MCI fit, and links the file from both pages.
+
+**Column names.** The defaults are `AVTOT1`–`AVTOT5`, `AVDEL30MIN`, `AVDELTOT` (recognition hits), `AVDELERR2` (recognition false positives), `DX_bl`, `RID` and `VISCODE`. Override any of them with `--map key=COLUMN`. The script prints the range of each field so you can confirm the mapping against the data dictionary.
+
+**Pipeline check.** `node tools/fit_adni.js --synthetic 1200` runs the same steps on simulated ADNI-shaped data with known group means, and the means are recovered closely.
+
 ## Layout
 
 ```
@@ -113,6 +131,8 @@ js/arcade.js        arcade UI
 js/dashboard.js     dashboard UI
 tools/simulate.js   Monte Carlo evaluation of whole sessions (Node)
 tools/recovery.js   parameter recovery for the generative models (Node)
+tools/fit_adni.js   fit the memory model and diagnosis templates to ADNI RAVLT (Node)
+data/               fit outputs
 ```
 
 ## Next steps
