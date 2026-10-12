@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mind Arcade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Rubik:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/arcade.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="logo">Mind Arcade</h1>
+    <div class="top-r">
+      <span class="pill" aria-live="polite"><b id="xp">0</b> XP</span>
+      <label class="pill" for="examToggle"><input type="checkbox" id="examToggle"> Examiner view</label>
+      <button class="pill" id="soundToggle" aria-pressed="true">Sound on</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="field">
+      <section id="v-title" class="panel title-card">
+        <h2>Eleven mini-games. One very curious machine.</h2>
+        <p>Every game you play tells the machine something about how your mind works. It picks the next game based on what it still needs to know, and it stops the moment two different games agree.</p>
+        <div class="marquee" aria-label="Games in the arcade"><span>Echo Chamber</span><span>Dodge the X</span><span>Color Clash</span><span>Dot Dash</span><span>Word Vault</span><span>Animal Stampede</span><span>F-Frenzy</span><span>Riddle Me This</span><span>Flip or Spin</span><span>Rewind</span></div>
+        <div class="title-actions"><button class="btn go" id="btnStart">Play</button><button class="btn alt" id="btnDemo">Watch the bot play</button></div>
+        <p class="fine">Usually 6 to 15 minutes. Keyboard works best, touch is fine. Scores are compared with made-up practice norms, so this is a demo of the method, not a clinical test. Curious how it decides? Open the <a href="dashboard.html">engine dashboard</a>.</p>
+      </section>
+
+      <section id="v-board" class="panel" hidden>
+        <div class="board-head"><h2>Pick-a-level board</h2><span class="who" id="who"></span></div>
+        <p id="pickNote"></p>
+        <div class="levels" id="levels"></div>
+        <div class="next-bar" id="nextBar" hidden>
+          <div><h3 id="nextName"></h3><p id="nextBlurb"></p><p class="next-why" id="nextWhy" hidden></p></div>
+          <div class="next-actions"><button class="btn go small" id="btnPlay">Play level</button><button class="btn ghost small" id="btnSkip">Skip</button></div>
+        </div>
+      </section>
+
+      <section id="v-cabinet" class="cabinet" hidden>
+        <div class="cab-bar"><h2 id="cabTitle"></h2><span id="cabLevel"></span></div>
+        <div id="stage" class="stage" aria-live="polite"></div>
+        <div class="clear-card" id="clearCard" hidden><div><b>Cleared!</b><span id="clearName"></span> · +100 XP</div></div>
+      </section>
+
+      <section id="v-finale" class="panel fin" hidden>
+        <h2 id="finTitle"></h2>
+        <p id="finLine"></p>
+        <div id="finReveal"></div>
+        <div class="fin-stats" id="finStats"></div>
+        <ol class="fin-path" id="finPath" aria-label="Levels in the order played"></ol>
+        <div class="title-actions"><button class="btn go" id="btnAgain">Play again</button><button class="btn small ghost" id="btnHome">Back to title</button></div>
+      </section>
+    </div>
+
+    <aside class="hud">
+      <section class="panel">
+        <div class="radar-box"><svg id="radar" viewBox="0 0 200 200" role="img" aria-label="Eight hunches; the likelier a hunch, the bigger its orb and the closer it drifts to the center"></svg></div>
+        <div class="lock-read"><b id="lockPct">13%</b><span>sure about the top hunch</span></div>
+        <div style="margin-top:10px"><span class="mode m-explore" id="modeBadge">Scanning wide</span></div>
+        <div class="clues" id="clues"></div>
+        <p class="hud-note">Each orb is one hunch about how you think. Good clues push the right orb to the center. Two agreeing clues draw the crosshair.</p>
+        <div id="exam" hidden></div>
+      </section>
+      <button class="btn ghost small" id="btnQuit2">Quit to title</button>
+    </aside>
+  </div>
+</div>
+<div id="fx" aria-hidden="true"></div>
+<script src="js/engine.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/arcade.js"></script>
+</body>
+</html>

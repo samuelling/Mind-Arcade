@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adaptive Neuropsych Battery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Spectral:wght@500;600&display=swap">
+<link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">Research prototype · illustrative norms · not a diagnostic instrument</p>
+    <h1>Adaptive Neuropsych Battery</h1>
+    <p class="lede">Eleven short tasks, one Bayesian engine. Each next test is chosen by expected information gain while many patterns are live, then by how well it splits the top two once the field narrows. The session stops only when the leader is above 90% and two independent tests each favor it. <a href="index.html">Play the arcade version</a>.</p>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Mode">
+      <button id="modeSim" aria-pressed="true">Simulate patient</button>
+      <button id="modeLive" aria-pressed="false">Live session</button>
+    </div>
+    <div id="simCtl" class="ctl-row">
+      <label for="truth">True profile <select id="truth"></select></label>
+      <label for="seed">Seed <input id="seed" type="number" min="1" max="99999" value="2"></label>
+      <button id="btnRun" class="btn primary">Run</button>
+      <button id="btnStep" class="btn">Step</button>
+      <button id="btnReset" class="btn">Reset</button>
+    </div>
+    <div id="liveCtl" class="ctl-row" hidden>
+      <span class="hint">Takes 8 to 15 minutes. A keyboard works best; touch is supported.</span>
+      <button id="btnLive" class="btn primary">Start session</button>
+      <button id="btnEnd" class="btn" disabled>End session</button>
+    </div>
+  </div>
+
+  <main class="grid">
+    <div class="col">
+      <div class="screen">
+        <div class="screen-bar"><span id="screenLabel">Stimulus monitor · simulation</span><span id="screenClock"></span></div>
+        <div id="stage" class="stage" aria-live="polite"></div>
+      </div>
+      <section class="panel"><h2>Decision log <span class="muted" style="text-transform:none;letter-spacing:0">select a step to see its ranking</span></h2><ol id="trace" class="trace"></ol></section>
+    </div>
+    <div class="col">
+      <section class="panel"><h2>Posterior over patterns</h2><div id="post"></div><div id="evo"></div></section>
+      <section class="panel"><h2>Policy</h2><div id="policy"></div></section>
+      <section class="panel"><h2><span id="candTitle">Next-test ranking</span><button id="candBack" hidden>Show current</button></h2><div id="cands"></div></section>
+    </div>
+  </main>
+
+  <section class="panel">
+    <h2>Obtained profile</h2>
+    <div class="prof-head" id="profLegend"></div>
+    <div id="profile"></div>
+  </section>
+
+  <section class="panel methods">
+    <h2>How the engine decides</h2>
+    <div><h3>Pattern models</h3><p>Eight candidate patterns each predict a z-score on all 14 measures. Scores are treated as Gaussian around that prediction with SD <code>σ = 0.7</code>, conditionally independent given the pattern. The prior is flat, and the posterior is updated after every test.</p></div>
+    <div><h3>Explore</h3><p>For each remaining test, expected information gain <code>EIG = H(P) − E[H(P | scores)]</code> is computed by stratified Monte Carlo over the current posterior. EIG rewards tests that split many live patterns at once.</p></div>
+    <div><h3>Exploit</h3><p>For the leader <i>a</i> and runner-up <i>b</i>, <code>D = Σ (μₐ − μ_b)² / 2σ²</code> is the expected log-likelihood ratio a test will deliver between them. It rewards tests that settle the head-to-head.</p></div>
+    <div><h3>Blending</h3><p>The explore weight is <code>w = (2^H − 1) / 7</code>, the effective number of live patterns rescaled to 0–1. Utility is <code>[w·EIGₙ + (1 − w)·Dₙ] / minutes</code>, so the battery spends time where it buys the most certainty.</p></div>
+    <div><h3>Triangulation</h3><p>Each completed test is a sightline. It converges when its own scores favor the leader over the runner-up by BF ≥ 3. When the leader passes 90% on fewer than two sightlines, the engine switches to Confirm and prefers a test from a domain not yet converging.</p></div>
+    <div><h3>Stopping</h3><p>Converged: P ≥ 0.90 with two converging tests. Single-line: P ≥ 0.97 with nothing left that separates the top two. Unresolved: battery exhausted. Delayed recall unlocks two tests after list learning, and filler tests are chosen in between.</p></div>
+  </section>
+</div>
+<script src="js/engine.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>
