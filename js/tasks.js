@@ -32,20 +32,22 @@ function askText(stage, prompt, numeric) {
   });
 }
 // Chip-style word entry. With `seconds`, a countdown ends it; otherwise a Done button.
-function wordEntry(stage, prompt, { seconds = 0, splitSpaces = false } = {}) {
+function wordEntry(stage, prompt, { seconds = 0, splitSpaces = false, timed = false } = {}) {
   return new Promise(res => {
     stage.innerHTML = `<div class="st-card st-entry"><p class="st-prompt">${prompt}</p>
       <div class="st-entry-row"><input id="stWord" class="st-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type a word, press Enter"><button class="st-btn ghost" id="stAdd">Add</button></div>
       <div class="st-chips" id="stChips"></div>
       <div class="st-entry-foot">${seconds ? `<span class="st-clock" id="stClock">${seconds}</span><span class="st-dim">seconds left</span>` : '<span class="st-dim" id="stCount">0 words</span>'}${seconds ? '' : '<button class="st-btn" id="stDone">Done</button>'}</div></div>`;
     const inp = stage.querySelector('#stWord'), chips = stage.querySelector('#stChips');
-    const words = []; let finished = false;
+    const words = [], stamps = []; let finished = false; const tStart = performance.now();
     const draw = () => { chips.innerHTML = words.map(w => `<span class="st-chip">${esc(w)}</span>`).join(''); const c = stage.querySelector('#stCount'); if (c) c.textContent = `${words.length} word${words.length === 1 ? '' : 's'}`; };
     const add = () => {
       const parts = inp.value.split(splitSpaces ? /[\s,;]+/ : /[,;]+/).map(x => x.trim()).filter(Boolean);
-      words.push(...parts); inp.value = ''; draw(); inp.focus({ preventScroll: true });
+      const ts = (performance.now() - tStart) / 1000;
+      for (const p of parts) { words.push(p); stamps.push({ w: p, t: ts }); }
+      inp.value = ''; draw(); inp.focus({ preventScroll: true });
     };
-    const finish = () => { if (finished) return; finished = true; add(); res(words); };
+    const finish = () => { if (finished) return; finished = true; add(); res(timed ? stamps : words); };
     inp.focus({ preventScroll: true });
     inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
     stage.querySelector('#stAdd').onclick = add;
@@ -201,20 +203,20 @@ function scoreRecall(words, targets) {
   return got.size;
 }
 async function runWordLearn(stage) {
-  const pool = shuffle(POOL.slice()); WL = { targets: pool.slice(0, 10), foils: pool.slice(10, 20) };
-  await intro(stage, 'Word list learning', `Ten words will appear one at a time. Afterwards, type every word you remember, in any order. We will do this <b>twice</b> with the same list.<br>Keep them in mind: you will be asked about them again later.`);
-  let total = 0;
-  for (let tr = 1; tr <= 2; tr++) {
+  const pool = shuffle(POOL.slice()); WL = { targets: pool.slice(0, MEMN), foils: pool.slice(MEMN, 2 * MEMN) };
+  await intro(stage, 'Word list learning', `${MEMN} words will appear one at a time. Afterwards, type every word you remember, in any order. We will do this <b>${MEM_TRIALS} times</b> with the same list.<br>Keep them in mind: you will be asked about them again later.`);
+  const ks = [];
+  for (let tr = 1; tr <= MEM_TRIALS; tr++) {
     for (const w of WL.targets) await showBig(stage, w, 1300, 250, 'word');
-    const got = await wordEntry(stage, `Trial ${tr} of 2 · type every word you remember`, { splitSpaces: true });
-    total += scoreRecall(got, WL.targets);
-    if (tr === 1) await intro(stage, 'Word list learning', 'Same list again. Try to remember as many as you can, including the ones you already said.', 'Show the list');
+    const got = await wordEntry(stage, `Trial ${tr} of ${MEM_TRIALS} · type every word you remember`, { splitSpaces: true });
+    ks.push(scoreRecall(got, WL.targets));
+    if (tr < MEM_TRIALS) await intro(stage, 'Word list learning', 'Same list again. Try to remember as many as you can, including the ones you already said.', 'Show the list');
   }
-  return { wl_imm: total };
+  return { ks };
 }
 async function runWordDelay(stage) {
-  if (!WL) return { wl_del: 0, wl_rec: 0 };
-  await intro(stage, 'Delayed recall', 'Earlier you learned a list of 10 words. Type as many of them as you can remember now.');
+  if (!WL) return null;
+  await intro(stage, 'Delayed recall', `Earlier you learned a list of ${MEMN} words. Type as many of them as you can remember now.`);
   const got = await wordEntry(stage, 'Type every word you remember from the list', { splitSpaces: true });
   const del = scoreRecall(got, WL.targets);
   await intro(stage, 'Recognition', 'Words will appear one at a time. Was each one on the list?<br>Press <kbd>Y</kbd> for yes or <kbd>N</kbd> for no, or tap.');
@@ -226,7 +228,7 @@ async function runWordDelay(stage) {
     if (i === 0 && it.old) hit++; if (i === 0 && !it.old) fa++;
     await sleep(150);
   }
-  return { wl_del: del, wl_rec: hit / 10 - fa / 10 };
+  return { kd: del, hits: hit, fas: fa };
 }
 
 // --- Verbal fluency ---
@@ -235,15 +237,17 @@ async function runFluency(stage, kind) {
   await intro(stage, sem ? 'Category fluency' : 'Letter fluency', sem
     ? 'For <b>60 seconds</b>, type as many different <b>animals</b> as you can. Press Enter after each one.'
     : 'For <b>60 seconds</b>, type as many different words as you can that begin with the letter <b>F</b>. No names of people or places, and no repeats with different endings. Press Enter after each one.');
-  const words = await wordEntry(stage, sem ? 'Animals' : 'Words beginning with <b>F</b>', { seconds: 60 });
-  const seen = new Set();
-  for (let w of words) {
-    w = w.toLowerCase().trim().replace(/\s+/g, ' ');
+  const entries = await wordEntry(stage, sem ? 'Animals' : 'Words beginning with <b>F</b>', { seconds: 60, timed: true });
+  const seen = new Set(), times = [];
+  for (const { w: raw, t } of entries) {
+    const w = raw.toLowerCase().trim().replace(/\s+/g, ' ');
     if (!/^[a-z][a-z' -]{2,}$/.test(w)) continue;
     if (!sem && w[0] !== 'f') continue;
-    seen.add(w.replace(/(es|s|ing|ed)$/, ''));
+    const stem = w.replace(/(es|s|ing|ed)$/, '');
+    if (seen.has(stem)) continue;
+    seen.add(stem); times.push(t);
   }
-  return { [sem ? 'flu_sem' : 'flu_pho']: seen.size };
+  return { times };
 }
 
 // --- Responsive naming (ordered easy → hard, discontinue after 4 consecutive misses) ---
@@ -289,10 +293,10 @@ function drawShape(ctx, cells, cx, cy, s, ang, mirror) {
   ctx.restore();
 }
 async function runRotation(stage) {
-  await intro(stage, 'Mental rotation', 'Two shapes appear side by side. Is the right one the <b>same</b> shape turned around, or its <b>mirror image</b>?<br><kbd>S</kbd> same · <kbd>M</kbd> mirror, or tap. You have 5 seconds per pair.');
-  let correct = 0; const N = 16;
-  for (let n = 0; n < N; n++) {
-    const shape = SHAPES[rnd(SHAPES.length)], base = rnd(360), delta = [50, 90, 130, 170][rnd(4)] * (Math.random() < 0.5 ? -1 : 1), mirror = Math.random() < 0.5;
+  await intro(stage, 'Mental rotation', 'Two shapes appear side by side. Is the right one the <b>same</b> shape turned around, or its <b>mirror image</b>?<br><kbd>S</kbd> same · <kbd>M</kbd> mirror, or tap. Be quick but accurate.');
+  const trials = [], angles = shuffle(Array.from({ length: 20 }, (_, i) => ROT_ANGLES[i % ROT_ANGLES.length]));
+  for (let n = 0; n < angles.length; n++) {
+    const shape = SHAPES[rnd(SHAPES.length)], base = rnd(360), delta = angles[n] * (Math.random() < 0.5 ? -1 : 1), mirror = Math.random() < 0.5;
     stage.innerHTML = `<div class="st-trial"><canvas class="st-canvas" aria-label="Two shapes"></canvas><div class="st-choices"><button class="st-btn ghost" data-choice="0">Same <kbd>S</kbd></button><button class="st-btn ghost" data-choice="1">Mirror <kbd>M</kbd></button></div></div>`;
     const cv = stage.querySelector('canvas'), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     cv.width = r.width * dpr; cv.height = r.height * dpr;
@@ -301,11 +305,11 @@ async function runRotation(stage) {
     ctx.fillStyle = getComputedStyle(stage).getPropertyValue('--screen-ink').trim() || '#EDEFEA';
     drawShape(ctx, shape, r.width * 0.27, r.height / 2, s, base, false);
     drawShape(ctx, shape, r.width * 0.73, r.height / 2, s, base + delta, mirror);
-    const { i } = await choose(stage, ['s', 'm'], 5000);
-    if (i === (mirror ? 1 : 0)) correct++;
+    const { i, rt } = await choose(stage, ['s', 'm'], ROT_DEADLINE * 1000);
+    trials.push({ angle: angles[n], correct: i === (mirror ? 1 : 0), rt: i < 0 ? null : rt / 1000 });
     stage.innerHTML = ''; await sleep(300);
   }
-  return { rot: correct / N };
+  return { trials };
 }
 
 const RUNNERS = {

@@ -70,6 +70,37 @@ This runs simulated sessions for each true profile and reports completion time, 
 
 With 100 sessions per profile, the engine averages about 12 minutes, against 16.6 minutes for the full battery. When it converges, it is almost always correct. Overlapping profiles (mood, slowing, mixed) mostly end unresolved, which is the intended behavior.
 
+## v2: model-based branch
+
+On the `model-based` branch, three tasks are fit with generative process models at the trial level instead of being reduced to summary scores.
+
+| Task | Data kept | Model | Parameters |
+|---|---|---|---|
+| Word Vault + Vault Return (12 words × 3 trials, delay, 24-item recognition) | recall count per trial, delayed recall, hits and false alarms, delay in minutes | storage `1 − (1 − e)ⁿ`, recall = storage × access `r`, decay `e^(−fD)`, two-high-threshold recognition | encoding `e`, retrieval access `r`, forgetting `f` |
+| Animal Stampede / F-Frenzy | timestamp of every valid entry | Poisson depletion of a finite pool, rate `(N/τ)e^(−t/τ)` (Bousfield & Sedgewick; Wixted & Rohrer) | pool size `N`, search time constant `τ` |
+| Flip or Spin (20 trials, angles 40–160°) | RT and accuracy per trial | RT = non-decision + angle/ω + Wiener first-passage time (Navarro & Fuss density) | rotation rate `ω`, drift `v` (boundary and non-decision time are nuisance parameters) |
+
+**Inference.**
+- Each pattern is a distribution over parameters, as well as over the classic scores.
+- Model tests score each pattern by its exact marginal likelihood, integrated over the fitted grid. This handles trade-offs between parameters, such as encoding versus access.
+- Classic scores keep the z-score likelihood.
+- Delayed recall supersedes learning in the posterior. As a triangulation sightline, it counts only the evidence the delay added.
+
+**Predictions.**
+- Before each test, the engine commits to an 80% predictive band for every measure. The dashboard's ledger scores each band once the test is done.
+- After list learning, the engine also predicts delayed recall and recognition mechanistically, by importance sampling memory parameters conditioned on the learning curve.
+
+**Validation (simulation):**
+- `node tools/recovery.js 150` checks parameter recovery. Rotation rate recovers well (r ≈ 0.95). Memory and fluency parameters recover moderately (r ≈ 0.5–0.65) from a single short administration. Their 80% intervals cover the true value about 87–94% of the time, so the error bars are slightly conservative.
+- In full sessions, the 80% prediction bands contain about 86% of observations. Delayed recall is predicted to within about 1.4 words (mean absolute error) from learning trials alone. When a session converges, the leader is correct about 97% of the time.
+- `node tools/simulate.js 60` gives completion time and accuracy by profile.
+
+**Data to replace the placeholders.**
+- **ADNI:** RAVLT trials 1–5, delayed recall and recognition, with diagnosis and biomarkers. The memory model can be fit directly.
+- **NACC UDS:** pattern templates learned from clinician diagnoses.
+- **Cam-CAN:** age-stratified norms with trial-level data.
+- **Time-stamped fluency:** rare in existing datasets. The arcade collects it.
+
 ## Layout
 
 ```
@@ -80,7 +111,8 @@ js/engine.js        pattern models, Bayesian updating, test selection, simulatio
 js/tasks.js         browser implementations of the 11 tasks
 js/arcade.js        arcade UI
 js/dashboard.js     dashboard UI
-tools/simulate.js   Monte Carlo evaluation (Node)
+tools/simulate.js   Monte Carlo evaluation of whole sessions (Node)
+tools/recovery.js   parameter recovery for the generative models (Node)
 ```
 
 ## Next steps

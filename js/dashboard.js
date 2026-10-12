@@ -83,7 +83,7 @@ function renderTrace() {
   const ol = $('#trace');
   if (!S.trace.length) { ol.innerHTML = '<li class="trace-empty">No tests yet. The first choice is always the one with the most information per minute against a flat prior.</li>'; return; }
   ol.innerHTML = S.trace.map((e, i) => {
-    const res = e.skipped ? '<span class="muted">skipped</span>' : e.t.meas.map(m => `<span>${MEAS[m].label}: <b>${MEAS[m].fmt(e.raw[m])}</b> <i>z ${fmtZ(e.z[m])}</i></span>`).join('');
+    const res = e.skipped ? '<span class="muted">skipped</span>' : (e.summary ? `<span class="tsum">${e.summary}</span>` : '') + e.t.meas.filter(m => m in e.z).map(m => `<span>${MEAS[m].label}: <b>${MEAS[m].fmt(e.raw[m])}</b> <i>z ${fmtZ(e.z[m])}${e.se[m] ? ` ± ${e.se[m].toFixed(1)}` : ''}</i></span>`).join('');
     const li = e.Pafter.indexOf(Math.max(...e.Pafter));
     return `<li class="${selStep === i ? 'sel' : ''}"><button class="trace-btn" data-step="${i}" aria-label="Show ranking at step ${i + 1}">
       <span class="tnum">${String(i + 1).padStart(2, '0')}</span>
@@ -99,17 +99,20 @@ function renderProfile(d) {
   for (const dom of DOM_ORDER) {
     html += `<div class="prof-dom">${DOM[dom]}</div>`;
     for (const m of ORDER.filter(k => MEAS[k].dom === dom)) {
-      const has = m in S.obs, z = S.obs[m];
+      const has = m in S.obs, z = S.obs[m], se = S.se[m] || 0;
+      const pr = [...S.ledger].reverse().find(l => l.m === m);
       html += `<div class="prof-row ${has ? '' : 'untested'}"><span class="plabel">${MEAS[m].label}</span>
         <span class="ptrack2"><span class="bands"></span>
           <span class="ptick run" style="left:${X(d.run.mu[m])}%" title="${d.run.name} expects ${fmtZ(d.run.mu[m])}"></span>
           <span class="ptick lead" style="left:${X(d.lead.mu[m])}%" title="${d.lead.name} expects ${fmtZ(d.lead.mu[m])}"></span>
-          ${has ? `<span class="pdot" style="left:${X(z)}%"></span>` : ''}</span>
-        <span class="pv">${has ? `${MEAS[m].fmt(S.raw[m])} · ${fmtZ(z)} · ${pctile(z)}<br><i>${aacn(z)}</i>` : '<span class="muted">not given</span>'}</span></div>`;
+          ${pr ? `<span class="pband" style="left:${X(pr.lo)}%;width:${X(pr.hi) - X(pr.lo)}%" title="Predicted 80% band before testing"></span>` : ''}
+          ${has && se ? `<span class="pwhisk" style="left:${X(z - se)}%;width:${X(z + se) - X(z - se)}%"></span>` : ''}
+          ${has ? `<span class="pdot ${isParam(m) ? 'param' : ''}" style="left:${X(z)}%"></span>` : ''}</span>
+        <span class="pv">${has ? `${MEAS[m].fmt(S.raw[m])} · ${fmtZ(z)}${se ? ` ± ${se.toFixed(1)}` : ` · ${pctile(z)}`}<br><i>${isParam(m) ? 'model parameter' : aacn(z)}</i>` : '<span class="muted">not given</span>'}</span></div>`;
     }
   }
   $('#profile').innerHTML = html;
-  $('#profLegend').innerHTML = `<span><i class="lg-dot"></i>Obtained</span><span><i class="lg-lead"></i>${d.lead.name} expects</span><span><i class="lg-run"></i>${d.run.name} expects</span>
+  $('#profLegend').innerHTML = `<span><i class="lg-dot"></i>Score</span><span><i class="lg-dot param"></i>Model parameter ± posterior SD</span><span><i class="lg-band"></i>Predicted 80% band</span><span><i class="lg-lead"></i>${d.lead.name} expects</span><span><i class="lg-run"></i>${d.run.name} expects</span>
     <span class="lg-bands"><i class="b-el"></i>Exceptionally low &lt;2 · <i class="b-ba"></i>Below average 2–8 · <i class="b-la"></i>Low average 9–24 · <i class="b-av"></i>Average 25–75 (AACN labels, percentile)</span>`;
 }
 
@@ -117,15 +120,15 @@ function renderAll() {
   const d = D;
   renderPost(d); renderPolicy(d);
   renderCands(selStep != null ? S.trace[selStep].d : d, selStep);
-  renderTrace(); renderProfile(d);
+  renderTrace(); renderProfile(d); renderFits(); renderLedger();
   const mins = S.minutes;
   if (S.mode === 'sim') $('#screenClock').textContent = `${S.trace.length} tests · ≈${mins.toFixed(1)} min`;
 }
 
 // ---------- stimulus monitor (sim) ----------
 function stageStep(e) {
-  const rows = e.t.meas.map(m => `<tr><td>${MEAS[m].label}</td><td class="num">${MEAS[m].fmt(e.raw[m])}</td><td class="num">${fmtZ(e.z[m])}</td><td>${aacn(e.z[m])}</td></tr>`).join('');
-  stage.innerHTML = `<div class="st-card"><p class="st-eyebrow">Step ${S.trace.length} · simulated · ${PHASE[e.phase].label}</p><h3 class="st-title">${e.t.name}</h3><p class="st-why">${e.reason}</p><div class="st-tbl-wrap"><table class="st-tbl"><tbody>${rows}</tbody></table></div></div>`;
+  const rows = e.t.meas.filter(m => m in e.z).map(m => `<tr><td>${MEAS[m].label}</td><td class="num">${MEAS[m].fmt(e.raw[m])}</td><td class="num">${fmtZ(e.z[m])}${e.se[m] ? ` ± ${e.se[m].toFixed(1)}` : ''}</td><td>${isParam(m) ? 'fitted' : aacn(e.z[m])}</td></tr>`).join('');
+  stage.innerHTML = `<div class="st-card"><p class="st-eyebrow">Step ${S.trace.length} · simulated · ${PHASE[e.phase].label}</p><h3 class="st-title">${e.t.name}</h3><p class="st-why">${e.reason}</p>${e.summary ? `<p class="st-dim">${e.summary}</p>` : ''}<div class="st-tbl-wrap"><table class="st-tbl"><tbody>${rows}</tbody></table></div></div>`;
 }
 function stageVerdict() {
   const d = D, kind = d.stop ? d.stop.kind : 'exhausted';
@@ -140,7 +143,7 @@ function stageVerdict() {
     ${S.mode === 'live' ? '<p class="st-dim">Placeholder norms and illustrative pattern models. This is a demonstration of adaptive test selection, not a clinical result.</p>' : ''}</div>`;
 }
 function stageSimIdle() {
-  stage.innerHTML = `<div class="st-card"><p class="st-eyebrow">Simulated patient · ${truth.name}</p><h3 class="st-title">Ready</h3><p class="st-why">Each step draws z-scores from the true profile with SD ${SIGMA}. The engine sees only the scores. Press Step to watch one decision, or Run to play the session.</p></div>`;
+  stage.innerHTML = `<div class="st-card"><p class="st-eyebrow">Simulated patient · ${truth.name}</p><h3 class="st-title">Ready</h3><p class="st-why">The simulated patient gets fixed latent parameters drawn around the true pattern. Model-based tasks generate trial-level data (recall counts, entry timestamps, diffusion RTs) that the engine fits from scratch. Press Step to watch one decision, or Run to play the session.</p></div>`;
 }
 
 // ---------- simulation control ----------
@@ -154,8 +157,8 @@ function simReset() {
 }
 function advance() {
   if (D.stop) return false;
-  const c = D.choice; const { z, raw } = simulateTest(c.t, truth, rng);
-  applyResult(S, D, c, z, raw);
+  const c = D.choice;
+  applyResult(S, D, c, simulateTest(S, c.t, truth, rng));
   D = decide(S);
   if (D.stop) S.status = D.stop.kind;
   selStep = null; renderAll();
@@ -194,13 +197,19 @@ async function liveSession() {
     const go = await nextCard(D);
     if (liveToken !== token) return;
     const c = D.choice;
-    if (go === 'skip') applyResult(S, D, c, {}, {}, true);
+    if (go === 'skip') applyResult(S, D, c, null, true);
     else {
-      let raw;
-      try { raw = await RUNNERS[c.t.id](stage); } catch (err) { console.error(err); raw = null; }
+      let data; const startMs = performance.now();
+      if (c.t.id === 'wld') stage.innerHTML = '';
+      try { data = await RUNNERS[c.t.id](stage); } catch (err) { console.error(err); data = null; }
       if (liveToken !== token) return;
-      if (!raw) applyResult(S, D, c, {}, {}, true);
-      else { const z = {}; for (const m in raw) z[m] = rawToZ(m, raw[m]); applyResult(S, D, c, z, raw); }
+      if (!data) applyResult(S, D, c, null, true);
+      else {
+        if (c.t.id === 'wld' && S.learnAtMs != null) data.delayMin = (startMs - S.learnAtMs) / 60000 + 0.3;
+        stage.innerHTML = '<div class="st-card"><p class="st-eyebrow">Fitting</p><p class="st-why">Fitting the model to your responses…</p></div>';
+        await new Promise(r => setTimeout(r, 30));
+        applyResult(S, D, c, scoreTest(S, c.t, data));
+      }
     }
     D = decide(S); renderAll();
   }
@@ -232,7 +241,7 @@ function setMode(m) {
 
 // ---------- boot ----------
 $('#truth').innerHTML = HYPS.map(h => `<option value="${h.id}">${h.name}</option>`).join('') + '<option value="mixed">Mixed (amnestic + slowing)</option><option value="random">Random pattern</option>';
-$('#truth').value = 'amn'; $('#seed').value = 2;
+$('#truth').value = 'amn'; $('#seed').value = 4;
 $('#modeSim').onclick = () => setMode('sim');
 $('#modeLive').onclick = () => setMode('live');
 $('#btnRun').onclick = toggleRun;
@@ -245,3 +254,79 @@ $('#candBack').onclick = () => { selStep = null; renderAll(); };
 // Open on a completed example run so every panel shows real output
 simReset();
 while (advance()) { /* run to the end */ }
+
+// ---------- model fits and prediction ledger ----------
+function frame(w, h, xmax, ymax, xt, yt, xlab, ylab) {
+  const L = 34, B = 24, T = 8, R = 8, X = x => L + (x / xmax) * (w - L - R), Y = y => h - B - (y / ymax) * (h - B - T);
+  let g = `<line class="ax" x1="${L}" y1="${h - B}" x2="${w - R}" y2="${h - B}"/><line class="ax" x1="${L}" y1="${T}" x2="${L}" y2="${h - B}"/>`;
+  for (const x of xt) g += `<text class="tk" x="${X(x)}" y="${h - B + 13}" text-anchor="middle">${x}</text>`;
+  for (const y of yt) g += `<text class="tk" x="${L - 5}" y="${Y(y) + 3}" text-anchor="end">${y}</text><line class="gd" x1="${L}" x2="${w - R}" y1="${Y(y)}" y2="${Y(y)}"/>`;
+  g += `<text class="tk lab" x="${(L + w - R) / 2}" y="${h - 1}" text-anchor="middle">${xlab}</text><text class="tk lab" x="10" y="${(T + h - B) / 2}" text-anchor="middle" transform="rotate(-90 10 ${(T + h - B) / 2})">${ylab}</text>`;
+  return { X, Y, g };
+}
+function memChart() {
+  const L = S.data.wl; if (!L) return '';
+  const nat = m => zToNat(m, S.obs[m]);
+  const e = nat('mem_e'), r = nat('mem_r'), D = S.data.wld;
+  const f = D ? nat('mem_f') : 0, g = (S.fits.wld && S.fits.wld.g) || 0.08;
+  const p = memProbs(e, r, f, g, D ? D.delayMin : 0);
+  const labels = L.ks.map((_, i) => `T${i + 1}`).concat(D ? ['Delay', 'Hits', 'FA'] : []);
+  const obs = L.ks.map(k => k / MEMN).concat(D ? [D.kd / MEMN, D.hits / MEMN, D.fas / MEMN] : []);
+  const mod = p.learn.concat(D ? [p.pd, p.hit, p.fa] : []);
+  const w = 320, h = 170, n = labels.length, F = frame(w, h, n + 0.2, 1, [], [0, 0.5, 1], '', 'P(yes / recalled)');
+  const X = i => F.X(i + 0.6);
+  let s = F.g + labels.map((l, i) => `<text class="tk" x="${X(i)}" y="${h - 24 + 13}" text-anchor="middle">${l}</text>`).join('');
+  const nl = Math.min(MEM_TRIALS + (D ? 1 : 0), n);
+  s += `<polyline class="fitln" points="${mod.slice(0, nl).map((y, i) => `${X(i)},${F.Y(y)}`).join(' ')}"/>`;
+  mod.forEach((y, i) => { s += `<line class="fitbar" x1="${X(i) - 9}" x2="${X(i) + 9}" y1="${F.Y(y)}" y2="${F.Y(y)}"/>`; });
+  if (S.mechLedger) { const m = S.mechLedger, i = MEM_TRIALS; s += `<rect class="predbar" x="${X(i) - 6}" width="12" y="${F.Y(m.kdHi / MEMN)}" height="${Math.max(2, F.Y(m.kdLo / MEMN) - F.Y(m.kdHi / MEMN))}"/>`; }
+  obs.forEach((y, i) => { s += `<circle class="obs" cx="${X(i)}" cy="${F.Y(y)}" r="4.5"/>`; });
+  const txt = `Encoding ${Math.round(e * 100)}% per study · retrieval access ${Math.round(r * 100)}%${D ? ` · forgetting ${(f * 100).toFixed(1)}%/min over ${D.delayMin.toFixed(1)} min` : ' · forgetting not yet measured'}`;
+  return `<figure class="fig"><figcaption><b>Memory</b> · storage, access and decay</figcaption><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Recall and recognition by trial with model fit">${s}</svg><p class="figcap">${txt}. Dots are data, bars are the fitted model${S.mechLedger ? ', the shaded column is the delayed-recall prediction made before the test' : ''}.</p></figure>`;
+}
+function fluChart() {
+  const ids = ['flus', 'flup'].filter(id => S.data[id]); if (!ids.length) return '';
+  const keys = { flus: ['fs_N', 'fs_tau', 'Animals'], flup: ['fp_N', 'fp_tau', 'F-words'] };
+  const ymax = Math.max(10, ...ids.map(id => S.data[id].times.length)) + 2, w = 320, h = 170;
+  const F = frame(w, h, 60, ymax, [0, 20, 40, 60], [0, Math.round(ymax / 2), ymax], 'seconds', 'cumulative words');
+  let s = F.g, cap = [];
+  for (const id of ids) {
+    const ts = S.data[id].times, [kN, kT, lab] = keys[id], N = zToNat(kN, S.obs[kN]), tau = zToNat(kT, S.obs[kT]);
+    let pts = `${F.X(0)},${F.Y(0)}`; ts.forEach((t, i) => { pts += ` ${F.X(t)},${F.Y(i)} ${F.X(t)},${F.Y(i + 1)}`; }); pts += ` ${F.X(60)},${F.Y(ts.length)}`;
+    s += `<polyline class="step ${id}" points="${pts}"/>`;
+    const curve = Array.from({ length: 61 }, (_, t) => `${F.X(t)},${F.Y(fluCurve(N, tau, t))}`).join(' ');
+    s += `<polyline class="fitcurve ${id}" points="${curve}"/>`;
+    cap.push(`${lab}: pool ≈ ${Math.round(N)}, τ ≈ ${Math.round(tau)} s`);
+  }
+  return `<figure class="fig"><figcaption><b>Fluency</b> · pool size vs search speed</figcaption><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Cumulative fluency entries over time with fitted depletion curves">${s}</svg><p class="figcap">${cap.join(' · ')}. Steps are entries, dashed curves the fitted depletion model N(1 − e<sup>−t/τ</sup>). A small pool caps the curve; a slow search flattens its rise.</p></figure>`;
+}
+function rotChart() {
+  const D = S.data.rot; if (!D) return '';
+  const ok = D.trials.filter(x => x.correct && x.rt != null), bad = D.trials.filter(x => !x.correct && x.rt != null);
+  const om = zToNat('rot_w', S.obs.rot_w), v = zToNat('rot_v', S.obs.rot_v), fit = S.fits.rot || { a: 1.4, ter: 0.45 };
+  const ymax = Math.max(2.5, ...D.trials.filter(x => x.rt != null).map(x => x.rt)) * 1.05, w = 320, h = 170;
+  const F = frame(w, h, 180, ymax, [0, 60, 120, 180], [0, +(ymax / 2).toFixed(1), +ymax.toFixed(1)], 'rotation angle (°)', 'RT (s)');
+  let s = F.g;
+  const line = a => fit.ter + a / om + ddmMeanDT(v, fit.a);
+  s += `<line class="fitln" x1="${F.X(0)}" y1="${F.Y(line(0))}" x2="${F.X(180)}" y2="${F.Y(line(180))}"/>`;
+  ok.forEach((x, i) => { s += `<circle class="obs" cx="${F.X(x.angle + (i % 3 - 1) * 3)}" cy="${F.Y(x.rt)}" r="3.5"/>`; });
+  bad.forEach((x, i) => { s += `<circle class="obs err" cx="${F.X(x.angle + (i % 3 - 1) * 3)}" cy="${F.Y(x.rt)}" r="3.5"/>`; });
+  return `<figure class="fig"><figcaption><b>Mental rotation</b> · diffusion model</figcaption><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Response time by rotation angle with fitted line">${s}</svg><p class="figcap">Rotation ≈ ${Math.round(om)}°/s (the slope) · decision drift ${v.toFixed(2)} · boundary ${fit.a.toFixed(2)} · non-decision ${fit.ter.toFixed(2)} s. Hollow dots are errors.</p></figure>`;
+}
+function renderFits() {
+  const html = memChart() + fluChart() + rotChart();
+  $('#fits').innerHTML = html || '<p class="muted">Model-based tests (word list, fluency, mental rotation) appear here once given: the data, the fitted generative model, and the parameters it recovers.</p>';
+}
+function renderLedger() {
+  const L = S.ledger;
+  if (!L.length) { $('#ledger').innerHTML = '<p class="muted">Before every test, the engine commits to a predicted 80% band for each measure. Once the test is done, each prediction is scored here.</p>'; return; }
+  const inside = L.filter(l => l.inside).length, ls = L.reduce((a, l) => a + l.logScore, 0) / L.length;
+  let mech = '';
+  if (S.mechLedger) {
+    const m = S.mechLedger, o = m.observed, hit = o.kd >= m.kdLo && o.kd <= m.kdHi;
+    mech = `<p class="mech ${hit ? 'ok' : 'miss'}"><b>Mechanistic prediction.</b> From learning trials alone, the model predicted delayed recall of ${m.kdMean.toFixed(1)} of ${MEMN} words (80% band ${m.kdLo}–${m.kdHi}) after ${m.delay.toFixed(1)} min, and a recognition hit rate of ${Math.round(m.hitRate * 100)}%. Observed: ${o.kd} words, ${Math.round(o.hitRate * 100)}% hits.</p>`;
+  }
+  const rows = L.map(l => `<tr class="${l.inside ? '' : 'out'}"><td>${TEST_BY_ID[l.test].name}</td><td>${MEAS[l.m].label}</td><td class="num">${fmtZ(l.lo)} to ${fmtZ(l.hi)}</td><td class="num">${fmtZ(l.z)}</td><td>${l.inside ? 'inside' : 'surprise'}</td></tr>`).join('');
+  $('#ledger').innerHTML = `<p class="cand-note"><b>${inside} of ${L.length}</b> observations fell inside the model's pre-test 80% band (well calibrated ≈ 80%). Mean log predictive density ${ls.toFixed(2)}.</p>${mech}
+    <div class="tbl-wrap"><table class="cands ledger"><thead><tr><th>Test</th><th>Measure</th><th class="num">Predicted 80% (z)</th><th class="num">Observed</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}

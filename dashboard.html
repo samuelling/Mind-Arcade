@@ -14,7 +14,7 @@
   <header class="mast">
     <p class="eyebrow">Research prototype · illustrative norms · not a diagnostic instrument</p>
     <h1>Adaptive Neuropsych Battery</h1>
-    <p class="lede">Eleven short tasks, one Bayesian engine. Each next test is chosen by expected information gain while many patterns are live, then by how well it splits the top two once the field narrows. The session stops only when the leader is above 90% and two independent tests each favor it. <a href="index.html">Play the arcade version</a>.</p>
+    <p class="lede">Eleven short tasks, one Bayesian engine, and generative models for memory, fluency and mental rotation. Each next test is chosen by expected information gain while many patterns are live, then by how well it splits the top two once the field narrows. The session stops only when the leader is above 90% and two independent tests each favor it. <a href="index.html">Play the arcade version</a>.</p>
   </header>
 
   <div class="controls">
@@ -24,7 +24,7 @@
     </div>
     <div id="simCtl" class="ctl-row">
       <label for="truth">True profile <select id="truth"></select></label>
-      <label for="seed">Seed <input id="seed" type="number" min="1" max="99999" value="2"></label>
+      <label for="seed">Seed <input id="seed" type="number" min="1" max="99999" value="4"></label>
       <button id="btnRun" class="btn primary">Run</button>
       <button id="btnStep" class="btn">Step</button>
       <button id="btnReset" class="btn">Reset</button>
@@ -57,14 +57,17 @@
     <div id="profile"></div>
   </section>
 
+  <section class="panel"><h2>Model fits</h2><div id="fits" class="fits"></div></section>
+  <section class="panel"><h2>Prediction ledger</h2><div id="ledger"></div></section>
+
   <section class="panel methods">
     <h2>How the engine decides</h2>
-    <div><h3>Pattern models</h3><p>Eight candidate patterns each predict a z-score on all 14 measures. Scores are treated as Gaussian around that prediction with SD <code>σ = 0.7</code>, conditionally independent given the pattern. The prior is flat, and the posterior is updated after every test.</p></div>
-    <div><h3>Explore</h3><p>For each remaining test, expected information gain <code>EIG = H(P) − E[H(P | scores)]</code> is computed by stratified Monte Carlo over the current posterior. EIG rewards tests that split many live patterns at once.</p></div>
-    <div><h3>Exploit</h3><p>For the leader <i>a</i> and runner-up <i>b</i>, <code>D = Σ (μₐ − μ_b)² / 2σ²</code> is the expected log-likelihood ratio a test will deliver between them. It rewards tests that settle the head-to-head.</p></div>
-    <div><h3>Blending</h3><p>The explore weight is <code>w = (2^H − 1) / 7</code>, the effective number of live patterns rescaled to 0–1. Utility is <code>[w·EIGₙ + (1 − w)·Dₙ] / minutes</code>, so the battery spends time where it buys the most certainty.</p></div>
-    <div><h3>Triangulation</h3><p>Each completed test is a sightline. It converges when its own scores favor the leader over the runner-up by BF ≥ 3. When the leader passes 90% on fewer than two sightlines, the engine switches to Confirm and prefers a test from a domain not yet converging.</p></div>
-    <div><h3>Stopping</h3><p>Converged: P ≥ 0.90 with two converging tests. Single-line: P ≥ 0.97 with nothing left that separates the top two. Unresolved: battery exhausted. Delayed recall unlocks two tests after list learning, and filler tests are chosen in between.</p></div>
+    <div><h3>Generative task models</h3><p>Word list, fluency and rotation are fit at the trial level. Memory: storage after <i>n</i> studies is <code>1 − (1 − e)ⁿ</code>, recall is storage × access <code>r</code>, storage decays as <code>e<sup>−fD</sup></code>, and recognition follows a two-high-threshold rule. Fluency: entries form a Poisson process that depletes a pool of <code>N</code> items with time constant <code>τ</code>. Rotation: RT = non-decision + angle / rotation rate + a Wiener diffusion with drift <code>v</code> and boundary <code>a</code>.</p></div>
+    <div><h3>Patterns in parameter space</h3><p>Eight patterns each predict a z-score for every parameter and every classic score, with spread <code>σ = 0.7</code>. For model tests, each pattern is scored by its exact marginal likelihood: the data likelihood integrated over the whole fitted grid under that pattern's parameter distribution. Correlated parameters (encoding vs access) are handled jointly.</p></div>
+    <div><h3>Explore and exploit</h3><p>Expected information gain over all patterns (explore) is blended with the expected log-likelihood ratio between the top two (exploit). The weight is <code>w = (2^H − 1) / 7</code>, and utility is divided by test minutes. Planning uses each model's typical posterior precision, so tests that fit noisily are valued less.</p></div>
+    <div><h3>Predictions</h3><p>Before every test, the engine commits to an 80% predictive band for each measure from the current pattern mixture. After list learning, it also predicts delayed recall and recognition mechanistically, by importance sampling memory parameters conditioned on the learning curve. The ledger scores every prediction.</p></div>
+    <div><h3>Triangulation</h3><p>Each completed test is a sightline. It converges when its own evidence favors the leader over the runner-up by BF ≥ 3. For delayed recall, only the evidence the delay added counts, so learning trials are never double-counted.</p></div>
+    <div><h3>Stopping</h3><p>Converged: P ≥ 0.90 with two converging tests. Single-line: P ≥ 0.97 with nothing left that separates the top two. Unresolved: battery exhausted. Norms and pattern means are placeholders, built to be replaced by fits to ADNI, NACC or new data.</p></div>
   </section>
 </div>
 <script src="js/engine.js"></script>

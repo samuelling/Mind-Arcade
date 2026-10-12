@@ -251,3 +251,32 @@ select, .ctl-row input { background: var(--sheet); border: 1px solid var(--rule)
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 .lede a { color: var(--accent); font-weight: 500; }
+
+/* v2: model fits, ledger, uncertainty */
+.fits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 18px 24px; }
+.fig { margin: 0; min-width: 0; }
+.fig figcaption { font-size: 14px; margin-bottom: 6px; }
+.fig svg { width: 100%; height: auto; display: block; overflow: visible; }
+.figcap { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.fig .ax { stroke: var(--ink-2); stroke-width: 1; }
+.fig .gd { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 3; }
+.fig .tk { font: 10px var(--f-mono); fill: var(--ink-2); }
+.fig .lab { font-size: 9.5px; }
+.fig .obs { fill: var(--ink); stroke: var(--sheet); stroke-width: 1.5; }
+.fig .obs.err { fill: var(--sheet); stroke: var(--bad); stroke-width: 1.5; }
+.fig .fitln { fill: none; stroke: var(--accent); stroke-width: 2; }
+.fig .fitbar { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+.fig .predbar { fill: var(--runner-soft); stroke: var(--runner); stroke-width: 1; }
+.fig .step { fill: none; stroke-width: 2; }
+.fig .step.flus { stroke: var(--accent); } .fig .step.flup { stroke: var(--runner); }
+.fig .fitcurve { fill: none; stroke-width: 1.5; stroke-dasharray: 4 3; opacity: .9; }
+.fig .fitcurve.flus { stroke: var(--accent); } .fig .fitcurve.flup { stroke: var(--runner); }
+.mech { margin: 0 0 12px; padding: 10px 12px; border-radius: 5px; background: var(--paper); border-left: 3px solid var(--good); font-size: 14px; }
+.mech.miss { border-left-color: var(--bad); }
+.ledger tr.out td { color: var(--bad); }
+.pband { position: absolute; top: 0; bottom: 0; background: var(--runner-soft); border: 1px dashed var(--runner); border-radius: 2px; }
+.pwhisk { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--ink); opacity: .55; }
+.pdot.param { background: var(--accent); }
+.lg-dot.param { background: var(--accent); }
+.lg-band { width: 14px; height: 10px; background: var(--runner-soft); border: 1px dashed var(--runner); }
+.tsum { flex-basis: 100%; color: var(--ink-2); }

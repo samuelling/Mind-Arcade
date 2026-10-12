@@ -80,7 +80,7 @@ function renderHUD() {
   if (examiner) {
     const rows = HYPS.map((h, i) => ({ h, p: d.P[i], i })).sort((a, b) => b.p - a.p)
       .map(({ h, p, i }) => `<li><span class="sw o-${ORB[i]}"></span><span>${h.name}</span><b>${p < 0.005 ? '<1' : Math.round(p * 100)}%</b></li>`).join('');
-    $('#exam').innerHTML = `<ul class="exam-list">${rows}</ul><p class="exam-stats">Explore weight ${d.w.toFixed(2)} · entropy ${d.H.toFixed(2)} bits · ${d.lead.name} vs ${d.run.name}, ${d.k} of 2 tests at BF ≥ 3</p>`;
+    $('#exam').innerHTML = `<ul class="exam-list">${rows}</ul><p class="exam-stats">Explore weight ${d.w.toFixed(2)} · entropy ${d.H.toFixed(2)} bits · ${d.lead.name} vs ${d.run.name}, ${d.k} of 2 tests at BF ≥ 3${S.ledger.length ? ` · predictions: ${S.ledger.filter(l => l.inside).length} of ${S.ledger.length} inside their 80% band` : ''}</p>`;
   }
 }
 
@@ -154,21 +154,27 @@ async function run(isDemo) {
     const act = isDemo ? (await sleep(900), 'go') : await waitNext();
     if (tok !== token) return;
     const c = D.choice;
-    if (act === 'skip') applyResult(S, D, c, {}, {}, true);
+    if (act === 'skip') applyResult(S, D, c, null, true);
     else {
       show('cabinet');
       $('#cabTitle').textContent = LV[c.t.id].name;
       $('#cabLevel').textContent = `Level ${S.trace.length + 1}`;
-      let z = {}, raw = null;
-      if (isDemo) { await botPlay(c.t); ({ z, raw } = simulateTest(c.t, truth, rng)); }
+      let res = null;
+      if (isDemo) { await botPlay(c.t); res = simulateTest(S, c.t, truth, rng); }
       else {
-        try { raw = await RUNNERS[c.t.id](stage); } catch (e) { console.error(e); }
-        if (raw) for (const m in raw) z[m] = rawToZ(m, raw[m]);
+        const startMs = performance.now(); let data = null;
+        try { data = await RUNNERS[c.t.id](stage); } catch (e) { console.error(e); }
+        if (data) {
+          if (c.t.id === 'wld' && S.learnAtMs != null) data.delayMin = (startMs - S.learnAtMs) / 60000 + 0.3;
+          stage.innerHTML = '<div class="st-card"><p class="st-eyebrow">Crunching</p><p class="st-why">Fitting the model to your responses…</p></div>';
+          await sleep(30);
+          res = scoreTest(S, c.t, data);
+        }
       }
       if (tok !== token) return;
-      if (raw) applyResult(S, D, c, z, raw); else applyResult(S, D, c, {}, {}, true);
+      if (res) applyResult(S, D, c, res); else applyResult(S, D, c, null, true);
       D = decide(S);
-      if (raw) await cleared(c.t);
+      if (res) await cleared(c.t);
       if (tok !== token) return;
     }
     D = decide(S);
