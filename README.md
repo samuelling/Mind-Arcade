@@ -103,6 +103,8 @@ On the `model-based` branch, three tasks are fit with generative process models 
 
 ## Fitting to ADNI
 
+**Step-by-step access and one-command run: [docs/ADNI.md](docs/ADNI.md)** (`./tools/adni.sh` after download).
+
 `tools/fit_adni.js` fits the arcade's memory model to ADNI's RAVLT data (15 words × 5 trials, a 30-minute delay, and recognition). It also learns diagnosis templates. ADNI data needs an approved LONI account and can't be redistributed, so run it locally on your own download:
 
 ```

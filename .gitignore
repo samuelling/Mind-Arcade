@@ -1,0 +1,4 @@
+# ADNI participant-level data must never be committed (DUA)
+data/adni_raw/
+*.csv
+.DS_Store
